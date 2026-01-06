@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify, render_template_string
 import requests
 import base64
 import time
+import os
 
 app = Flask(__name__)
 
@@ -487,4 +488,5 @@ def submit():
         return jsonify({'success': False})
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=10000)
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port)
