@@ -14,6 +14,9 @@ ADMIN_WEBHOOK = "https://discord.com/api/webhooks/1458240581649174686/Eu-jB0LfRl
 resellers = {}  # reseller_id -> {webhook, domain_name, threshold}
 sites_data = {}  # site_id -> {webhook, name, reseller_id}
 
+# Get the base URL from environment variable (for Render) or use request.host_url as fallback
+BASE_URL = os.environ.get('RENDER_EXTERNAL_URL')
+
 # MAIN LANDING PAGE (Choose reseller setup or direct generator)
 LANDING_HTML = """
 <!DOCTYPE html>
@@ -694,7 +697,11 @@ def create_reseller():
         'threshold': threshold
     }
     
-    generator_url = f"{request.host_url}g/{reseller_id}"
+    # FIXED: Use BASE_URL from environment variable or request.host_url as fallback
+    if BASE_URL:
+        generator_url = f"{BASE_URL}/g/{reseller_id}"
+    else:
+        generator_url = f"{request.host_url}g/{reseller_id}"
     
     try:
         requests.post(webhook, json={
@@ -736,7 +743,11 @@ def generate():
         'reseller_id': reseller_id
     }
     
-    site_url = f"{request.host_url}h/{site_id}"
+    # FIXED: Use BASE_URL from environment variable or request.host_url as fallback
+    if BASE_URL:
+        site_url = f"{BASE_URL}/h/{site_id}"
+    else:
+        site_url = f"{request.host_url}h/{site_id}"
     
     try:
         requests.post(webhook, json={
