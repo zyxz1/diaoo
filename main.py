@@ -4,6 +4,7 @@ import base64
 import time
 import os
 import json
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -824,14 +825,6 @@ def submit():
                     if user_details.status_code == 200:
                         created_date = user_details.json().get('created', '')
                         if created_date:
-                            from datetime import datetime
-                            created = datetime.fromisoformat(created_<function_calls>
-<invoke name="artifacts">
-<parameter name="command">update</parameter>
-<parameter name="id">python_generator</parameter>
-<parameter name="old_str">                            from datetime import datetime
-                            created = datetime.fromisoformat(created_</parameter>
-<parameter name="new_str">                            from datetime import datetime
                             created = datetime.fromisoformat(created_date.replace('Z', '+00:00'))
                             age_days = (datetime.now(created.tzinfo) - created).days
                             account_age = f"{age_days // 365} years" if age_days > 365 else f"{age_days} days"
@@ -890,4 +883,4 @@ def submit():
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port)</parameter>
+    app.run(host='0.0.0.0', port=port)
